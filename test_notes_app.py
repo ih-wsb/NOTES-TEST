@@ -1,139 +1,105 @@
 import unittest
-from unittest.mock import patch, mock_open
+from unittest.mock import patch, MagicMock
+from tkinter import Tk, Text
 import os
-import shutil
-
-from notes_app import create_note, list_notes, view_note, delete_note
-
-NOTES_DIR = "notes"
+import builtins
+import notes_app
 
 
-class TestNotesApp(unittest.TestCase):
-    #Create a mock notes directory for testing.
-    @classmethod
-    def setUpClass(cls):
+class TestTextEditorApp(unittest.TestCase):
 
-        if not os.path.exists(NOTES_DIR):
-            os.makedirs(NOTES_DIR)
+    def setUp(self):
+        """Create a test window and text area."""
+        self.window = Tk()
+        self.text_area = Text(self.window)
 
-    #Remove the mock notes directory after tests.
-    @classmethod
-    def tearDownClass(cls):
-
-        if os.path.exists(NOTES_DIR):
-            shutil.rmtree(NOTES_DIR)
-
-    #Clean up test files after each test.
     def tearDown(self):
+        """Destroy the test window after each test."""
+        self.window.destroy()
 
-        for file in os.listdir(NOTES_DIR):
-            os.remove(os.path.join(NOTES_DIR, file))
+    @patch('tkinter.filedialog.askopenfilename', return_value='test_file.txt')
+    @patch('builtins.open', new_callable=MagicMock)
+    def test_open_file(self, mock_open, mock_askopenfilename):
+        """Test the open_file function."""
+        mock_open.return_value.read.return_value = "Test content"
 
-   #Test that creating a note saves a file with the correct content.
-    @patch("builtins.input", side_effect=["TestNote", "This is a test note."])
-    def test_create_note_saves_file(self, mock_input):
+        notes_app.open_file()
 
-        create_note()
-        note_path = os.path.join(NOTES_DIR, "TestNote.txt")
-        self.assertTrue(os.path.exists(note_path))
+        mock_open.assert_called_with('test_file.txt', 'r')
+        self.assertEqual(self.text_area.get(1.0, 'end-1c'), "Test content")
 
-        with open(note_path, "r") as file:
-            content = file.read()
-            self.assertEqual(content, "This is a test note.")
+    @patch('tkinter.filedialog.asksaveasfilename', return_value='test_save.txt')
+    @patch('builtins.open', new_callable=MagicMock)
+    def test_save_file(self, mock_open, mock_asksaveasfilename):
+        """Test the save_file function."""
+        self.text_area.insert(1.0, "Test save content")
+        notes_app.save_file()
 
-    #Test listing notes when no notes exist.
-    def test_list_notes_empty(self):
+        mock_open.assert_called_with('test_save.txt', 'w')
+        mock_open.return_value.write.assert_called_with("Test save content\n")
 
-        with patch("sys.stdout") as mock_stdout:
-            list_notes()
-            mock_stdout.write.assert_called_with("No notes found.\n")
+    def test_new_file(self):
+        """Test the new_file function."""
+        self.text_area.insert(1.0, "Old content")
+        notes_app.new_file()
 
-    #Test listing notes when notes exist.
-    def test_list_notes_with_notes(self):
+        self.assertEqual(self.text_area.get(1.0, 'end-1c'), "")
 
-        # Create a test note
-        with open(os.path.join(NOTES_DIR, "TestNote.txt"), "w") as f:
-            f.write("Content")
+    @patch('tkinter.colorchooser.askcolor', return_value=('gray', '#808080'))
+    def test_change_color(self, mock_askcolor):
+        """Test changing text color."""
+        notes_app.change_color()
 
-        with patch("sys.stdout") as mock_stdout:
-            list_notes()
-            mock_stdout.write.assert_any_call("Available notes:\n")
+        self.assertEqual(self.text_area.cget("fg"), '#808080')
 
-    #Test viewing a note displays the correct content.
-    @patch("builtins.input", side_effect=["TestNote"])
-    def test_view_note_displays_content(self, mock_input):
+    def test_change_font(self):
+        """Test changing the font."""
+        notes_app.font_name.set("Courier")
+        notes_app.font_size.set(12)
 
-        # Create a test note
-        with open(os.path.join(NOTES_DIR, "TestNote.txt"), "w") as f:
-            f.write("Test note content.")
+        notes_app.change_font()
 
-        with patch("sys.stdout") as mock_stdout:
-            view_note()
-            mock_stdout.write.assert_any_call("Test note content.\n")
+        self.assertEqual(self.text_area.cget("font"), ('Courier', 12))
 
-    #Test viewing a note that doesn't exist.
-    @patch("builtins.input", side_effect=["NonExistentNote"])
-    def test_view_note_not_found(self, mock_input):
+    @patch('tkinter.messagebox.showinfo')
+    def test_about(self, mock_showinfo):
+        """Test the about dialog."""
+        notes_app.about()
 
-        with patch("sys.stdout") as mock_stdout:
-            view_note()
-            mock_stdout.write.assert_any_call("Note 'NonExistentNote' not found.\n")
+        mock_showinfo.assert_called_with("About this program", "This is a program written by yo mum")
 
-    #Test deleting a note removes the file.
-    @patch("builtins.input", side_effect=["TestNote"])
-    def test_delete_note_removes_file(self, mock_input):
-        # Create a test note
-        note_path = os.path.join(NOTES_DIR, "TestNote.txt")
-        with open(note_path, "w") as f:
-            f.write("Content")
+    @patch('text_editor_app.window.quit')  # Mocking the quit method of the window
+    def test_quit(self, mock_quit):
+        """Test quitting the app."""
+        notes_app.quit()
 
-        delete_note()
-        self.assertFalse(os.path.exists(note_path))
+        mock_quit.assert_called()
 
-    #Test trying to delete a non-existent note.
-    @patch("builtins.input", side_effect=["NonExistentNote"])
-    def test_delete_note_not_found(self, mock_input):
-        with patch("sys.stdout") as mock_stdout:
-            delete_note()
-            mock_stdout.write.assert_any_call("Note 'NonExistentNote' not found.\n")
+    def test_cut(self):
+        """Test the cut operation."""
+        self.text_area.insert(1.0, "Test cut")
+        self.text_area.tag_add("sel", "1.0", "1.4")
+        notes_app.cut()
 
-    #Test creating multiple notes.
-    @patch("builtins.input", side_effect=["TestNote", "Another test note"])
-    def test_create_multiple_notes(self, mock_input):
+        self.assertEqual(self.text_area.get(1.0, 'end-1c'), " cut")
 
-        create_note()
-        create_note()
+    def test_copy(self):
+        """Test the copy operation."""
+        self.text_area.insert(1.0, "Test copy")
+        self.text_area.tag_add("sel", "1.0", "1.4")
+        notes_app.copy()
 
-        notes = os.listdir(NOTES_DIR)
-        self.assertEqual(len(notes), 2)
-        self.assertIn("TestNote.txt", notes)
+        clipboard_content = self.window.clipboard_get()
+        self.assertEqual(clipboard_content, "Test")
 
-    #Test viewing a note that has no content.
-    @patch("builtins.input", side_effect=["TestNote"])
-    def test_view_note_with_no_content(self, mock_input):
+    def test_paste(self):
+        """Test the paste operation."""
+        self.window.clipboard_clear()
+        self.window.clipboard_append("Paste content")
 
-        note_path = os.path.join(NOTES_DIR, "TestNote.txt")
-        with open(note_path, "w") as f:
-            pass  # Create an empty note
+        notes_app.paste()
 
-        with patch("sys.stdout") as mock_stdout:
-            view_note()
-            mock_stdout.write.assert_any_call("\n--- TestNote ---\n")
-
-    #Test deleting a note and verifying the list of notes is updated.
-    @patch("builtins.input", side_effect=["TestNote"])
-    def test_delete_note_and_list(self, mock_input):
-
-        # Create a test note
-        note_path = os.path.join(NOTES_DIR, "TestNote.txt")
-        with open(note_path, "w") as f:
-            f.write("Some content")
-
-        delete_note()
-
-        with patch("sys.stdout") as mock_stdout:
-            list_notes()
-            mock_stdout.write.assert_any_call("No notes found.\n")
+        self.assertEqual(self.text_area.get(1.0, 'end-1c'), "Paste content")
 
 
 if __name__ == "__main__":
